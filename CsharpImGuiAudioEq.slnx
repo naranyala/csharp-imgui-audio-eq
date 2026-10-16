@@ -1,0 +1,5 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ImGuiApp/ImGuiApp.csproj" />
+  </Folder>
+</Solution>

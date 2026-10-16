@@ -1,0 +1,28 @@
+# Build output
+bin/
+obj/
+artifacts/
+publish/
+out/
+
+# IDE / editor
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Test / coverage
+TestResults/
+coverage*/
+*.trx
+
+# ImGui runtime layout (generated on app run)
+imgui.ini
+
+# Logs and OS junk
+*.log
+.DS_Store
+Thumbs.db
