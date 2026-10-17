@@ -1,5 +1,10 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/AudioEq.Core/AudioEq.Core.csproj" />
+    <Project Path="src/AudioEq.Engine/AudioEq.Engine.csproj" />
     <Project Path="src/ImGuiApp/ImGuiApp.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AudioEq.Core.Tests/AudioEq.Core.Tests.csproj" />
   </Folder>
 </Solution>

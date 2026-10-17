@@ -83,6 +83,7 @@ internal sealed class Application : IDisposable
         if (ImGui.Begin("Audio EQ (starter)", ref _showDemo))
         {
             ImGui.TextUnformatted($"FPS: {ImGui.GetIO().Framerate:0.0}");
+            ImGui.TextDisabled("UI-only — sliders do not process audio yet");
             ImGui.Separator();
 
             ImGui.SliderFloat("Master gain (dB)", ref _gainDb, -24f, 12f);

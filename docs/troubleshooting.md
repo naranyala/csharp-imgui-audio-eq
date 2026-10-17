@@ -39,6 +39,25 @@ dotnet run --project src/ImGuiApp
 
 `IKeyboard.KeyChar` delivers a `char`; codepoints outside the BMP are not representable. Rare for an EQ UI; if needed, switch to UTF-16 surrogate pair handling.
 
+## Audio: engine tests or playback fail
+
+- **`OpenAlPlaybackEngine` reports `IsAvailable == false`**: OpenAL Soft
+  could not open a device. On Linux check the sound stack is running:
+  `pactl info` (PipeWire/PulseAudio) and `aplay -l` (ALSA devices). The
+  bundled Soft natives do not need a distro package.
+- **Test soft-skips with no message**: `OpenAlEngine_SinesToDeviceAndComplete`
+  returns early when no device is present — that is by design; the mock
+  tests still prove the contract.
+- **Sound plays but is silent**: check the system mixer (PipeWire/Pulse)
+  volume and the active sink (`pactl list short sinks`).
+- **Underrun counter grows**: the refill thread fell behind (heavy system
+  load or a tiny buffer). Buffers are 1024 frames (~23 ms at 44.1 kHz);
+  raise `FramesPerBlock` in `OpenAlPlaybackEngine` if your machine needs
+  more headroom.
+- **No sound from the app UI**: expected today — the UI is not wired to
+  the engine yet (honest UI-only banner in the starter panel; see TODOS.md
+  audition-flow item).
+
 ## Performance
 
 - VSync is on by default (`options.VSync = true`) — disable it to measure raw frame rate.

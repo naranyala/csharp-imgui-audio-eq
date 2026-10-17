@@ -1,74 +1,76 @@
 # Roadmap: from starter to a real audio EQ
 
-This repo (`csharp-imgui-audio-eq`) is currently a UI/windowing starter. This document sketches how it can grow into an actual equalizer. Nothing here is implemented yet — it is a plan.
+This repo started as a UI/windowing starter and has grown: the DSP core,
+APO preset layer, and device playback engine now exist and are tested.
+The source of truth for "what is done vs next" is
+[`TODOS.md`](../TODOS.md); this document explains the shape of the
+journey and what remains.
 
-## Stage 1 — project structure
-
-Split into multiple projects so DSP and audio I/O stay testable without a GUI:
+## Stage 1 — project structure ✅
 
 ```
 CsharpImGuiAudioEq.slnx
 src/
-  ImGuiApp/        window + UI (existing)
-  AudioEq.Core/    class library: filters, DSP, preset model (unit-testable)
-  AudioEq.Engine/  class library: device I/O, real-time graph (optional, can live in Core)
+  ImGuiApp/        window + UI
+  AudioEq.Core/    class library: filters, DSP, WAV, APO (unit-testable)
+  AudioEq.Engine/  class library: IEqEngine, OpenAL Soft + mock backends
 tests/
   AudioEq.Core.Tests/
 ```
 
-Add with:
+DSP and audio I/O are testable without a GUI; the UI references both
+libraries but neither references the UI.
 
-```bash
-dotnet new classlib -n AudioEq.Core -o src/AudioEq.Core
-dotnet new xunit   -n AudioEq.Core.Tests -o tests/AudioEq.Core.Tests
-dotnet sln add src/AudioEq.Core tests/AudioEq.Core.Tests
-dotnet add src/ImGuiApp reference src/AudioEq.Core
-```
+## Stage 2 — DSP core ✅
 
-## Stage 2 — DSP core (no audio yet)
+- Biquad library (RBJ cookbook): peaking, low shelf, high shelf, notch —
+  degenerate parameters clamped to stable coefficients.
+- N-band `EqChain` with per-band gains, live `SetGains` (state-preserving),
+  and `MagnitudeResponseDb` for the curve widget.
+- Offline WAV render (PCM16/float32) with deterministic output.
+- Unit tests: flat/±6 dB, selectivity, clamps, impulse decay, measured
+  RMS vs analytic magnitude, degenerate-input safety.
 
-- Biquad filter library (RBJ cookbook): peaking, low shelf, high shelf, LPF/HPF.
-- Per-band parameter model: frequency, gain dB, Q -> coefficient recompute.
-- Sample-accurate processing API: `Process(Span<float> buffer, int channels)`.
-- Unit tests: impulse response, magnitude sweeps vs. analytic response.
+Not yet: LPF/HPF, golden vectors from a NumPy reference, callback-side
+parameter smoothing (P1 in TODOS.md).
 
-The starter UI sliders in `Application.DrawUI()` map naturally onto this model:
-`_bandGains[i]` -> band i gain; `_cutoffHz` -> global filter frequency.
+## Stage 3 — real-time audio I/O ✅ (backend chosen)
 
-## Stage 3 — real-time audio I/O
+Backend decision: **OpenAL Soft via `Silk.NET.OpenAL` + bundled natives**
+— full evidence in [audio-backend-decision](audio-backend-decision.md).
+Rejected PortAudio (native-dep story), miniaudio (no official binding),
+NAudio (Windows-only).
 
-Choose one:
+Implemented: `IEqEngine` contract, `OpenAlPlaybackEngine` (Float32
+streaming queue, lock-free gain swap, underrun counter, enumeration),
+`MockEqEngine` fallback; verified on real hardware by the test suite.
 
-| Option            | Pros                              | Cons                          |
-| ----------------- | --------------------------------- | ----------------------------- |
-| PortAudio (e.g. `PortAudioSharp2`) | cross-platform, low latency       | binding maturity varies       |
-| NAudio            | great on Windows                  | Windows-only                  |
-| OpenAL Soft       | simple API, game-audio heritage   | extra native dependency       |
-| miniaudio (via P/Invoke or binding) | tiny, cross-platform, callback-based | you maintain the binding      |
+Hard real-time rules honored on the refill path: no locks, no
+allocations, no ImGui/GL calls; parameters arrive via the lock-free
+`ApplyGains` swap. One-pole smoothing of gain changes is still P1
+(zipper-noise polish).
 
-Hard real-time rules for the audio callback:
+## Stage 4 — UI upgrades (mostly open)
 
-- no locks, no allocations, no ImGui/GL calls on the audio thread.
-- parameters (band gains, bypass) passed via lock-free atomics or a single-producer/single-consumer ring buffer; smooth them inside the callback (one-pole ramp) to avoid zipper noise.
+- Wire the UI to `IEqEngine` (audition flow + transport) — the P0 critical
+  path; the UI-only banner goes away only when this honestly lands.
+- Frequency-response curve plot from `EqChain.MagnitudeResponseDb` (core
+  math exists and is tested; the `ImDrawList` widget is open).
+- Spectrum analyzer (FftSharp; ring buffer from the engine).
+- Per-band draggable handles, preset browser on top of the APO/JSON store.
 
-## Stage 4 — UI upgrades
+## Stage 5 — polish / Tier 2 / release (open)
 
-- Frequency-response curve plot: compute the summed magnitude response of all biquads and draw it with `ImGui.GetWindowDrawList().PathLine/PathFillConvex` over a log-frequency grid (this is the signature EQ visual).
-- Spectrum analyzer: feed FFT magnitudes (FftSharp or MathNet.Numerics) into the same plot as a background layer; push audio frames from the audio thread into a ring buffer read by the UI thread.
-- Per-band draggable handles instead of plain sliders (handle input inside the plot widget using `ImGui.InvisibleButton` + `ImGui.SetMouseCursor`).
-- Preset management: save/load JSON presets; ImGui layout persists automatically to `imgui.ini`.
-
-## Stage 5 — polish
-
-- A/B compare, bypass, undo (keep a small ring of parameter snapshots).
-- Analyzer window size/overlap controls, band solo/mute.
-- Packaging: self-contained single-file publish per platform (see [getting-started](getting-started.md)).
+- A/B compare, bypass, undo, band solo/mute.
+- Tier-2 backends (WASAPI/CoreAudio) behind the same `IEqEngine` contract;
+  PipeWire filter-chain export for system-wide Linux EQ.
+- CI, LICENSE, icons, packaging, real-machine test matrix.
 
 ## Suggested order of work
 
-1. `AudioEq.Core` + biquad tests (pure, fast to validate)
-2. offline WAV render test (process a file through the EQ, write output)
-3. device I/O + callback plumbing with a null/bypass processor
-4. enable the processor, wire UI sliders to parameters
-5. response curve + spectrum visuals
-6. presets and polish
+1. Audition flow: UI → `IEqEngine` (decision recorded: live processing)
+2. Transport: play/pause, loop, track label
+3. Response-curve widget (math is ready)
+4. Parametric editing + preamp end-to-end + smoothing (P1)
+5. Preset store/bundle/browser, spectrum, conformance suite
+6. Tier 2 + release track
